@@ -1,7 +1,7 @@
 {
-  "name": "ヌルヌルの鼓動",
-  "short_name": "ヌルヌル",
-  "description": "流体とミラーボクセルと鮎の映像（非公式ファンアート）",
+  "name": "ヌルヌルの鼓動 2",
+  "short_name": "ヌルヌル2",
+  "description": "流体とミラーボクセルの映像（非公式ファンアート）",
   "start_url": "./",
   "scope": "./",
   "display": "fullscreen",
