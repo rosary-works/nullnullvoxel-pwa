@@ -9,8 +9,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="ヌルヌル2">
-<title>ヌルヌルの鼓動 2</title>
+<meta name="apple-mobile-web-app-title" content="ﾇﾙﾇﾙの鼓動">
+<title>ﾇﾙﾇﾙの鼓動</title>
 <style>
   :root { --fg:#ecebe8; --dim:#8d8c93; --glass:rgba(12,12,16,.66); --line:rgba(255,255,255,.09); --acc:#ffb35c; --rec:#ff5a5a; }
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
@@ -197,6 +197,7 @@ void main(){ vUv = aPos*0.5+0.5; gl_Position = vec4(aPos,0.,1.); }`;
 // Pass 1: height field (R = height, G = auxiliary flow value)
 const FS_H = `#version 300 es
 precision highp float;
+float sq(float x){ return x*x; }
 in vec2 vUv; out vec4 o;
 uniform vec2 uRes; uniform float uTime, uBoil, uFlow, uScale, uWarp, uFine, uRidge, uCell;
 uniform vec2 uSeed; uniform vec4 uV[8]; uniform int uVN;
@@ -231,7 +232,7 @@ void main(){
     P += (d0/r0)*(rs-r0); }
   // then the film twists around each eye
   for(int i=0;i<6;i++){ if(i>=uHN) break; vec4 hv=uHole[i]; float Rd=hv.z; float r0=length(P0-hv.xy);
-    float a = hv.w*1.6*pow(Rd/max(r0,Rd), 1.3);
+    float a = hv.w*1.6*pow(max(Rd/max(r0,Rd),0.0),1.3);
     vec2 d=P-hv.xy; float c=cos(a), s=sin(a); P = hv.xy + mat2(c,s,-s,c)*d; }
   for(int i=0;i<8;i++){ if(i>=uVN) break; vec4 v=uV[i]; vec2 d=P-v.xy; float a=v.z*exp(-dot(d,d)/(v.w*v.w));
     float c=cos(a), s=sin(a); P = v.xy + mat2(c,s,-s,c)*d; }
@@ -241,7 +242,7 @@ void main(){
   vec2 r = vec2(fbm(vec3(p + 3.0*q + vec2(1.7,9.2) + t*uFlow*0.025, b*0.7)),
                 fbm(vec3(p + 3.0*q + vec2(8.3,2.8) - t*uFlow*0.02, b*0.7+7.)));
   float h = fbm(vec3(p + uWarp*r, b*0.5+11.))*0.75 + 0.5;
-  float ridge = pow(clamp(1.0-abs(2.0*h-1.0),0.,1.), uFine);
+  float ridge = pow(max(clamp(1.0-abs(2.0*h-1.0),0.,1.),0.0),uFine);
   float hh = mix(h, ridge, uRidge);
   if(uCell>0.001){ float e = vedge((p + 0.8*r)*2.2, t*0.15*uFlow); hh += uCell*0.35*(smoothstep(0.0,0.14,e)-1.0); }
   for(int i=0;i<6;i++){ if(i>=uHN) break; float x=rr[i]; float Rd=uHole[i].z;
@@ -249,12 +250,14 @@ void main(){
   float prox = 0.;
   for(int i=0;i<6;i++){ if(i>=uHN) break; float Rd=uHole[i].z; prox = max(prox, exp(-max(rr[i],0.)/(Rd*1.2))); hh += 0.25*exp(-max(rr[i],0.)/(Rd*1.6)); }
   hh = mix(hh, -0.25, mask);
+  if(isnan(hh) || isinf(hh)) hh = 0.5;                                  // Windows/D3D: never let a bad value through
   o = vec4(hh, mix(length(r)*0.9 + q.x*0.6, q.x*1.6 + r.y*0.9, step(0.5, 4.0-uOct)), mask, prox*(1.0-mask));
 }`;
 
 // Pass 2: lighting
 const FS_S = `#version 300 es
 precision highp float;
+float sq(float x){ return x*x; }
 in vec2 vUv; out vec4 o;
 uniform sampler2D uH; uniform vec2 uRes; uniform float uTime, uLt;
 uniform float uSpark, uAsp, uMode, uBands;
@@ -274,7 +277,7 @@ float sparkles(vec2 uv, float t){
       if(h.x < 0.3) continue;
       vec2 pos = g + 0.5 + 0.38*vec2(sin(t*0.21+h.y*6.28), cos(t*0.17+h.x*6.28));
       vec2 d = (f-pos)/sc*9.0; float d2=dot(d,d);
-      float tw = pow(0.5+0.5*sin(t*(0.8+h.y*1.6)+h.x*40.), 3.0);
+      float tw = pow(max(0.5+0.5*sin(t*(0.8+h.y*1.6)+h.x*40.),0.0),3.0);
       acc += (0.35+0.65*tw)*(exp(-d2*380.)*2.0 + exp(-d2*45.)*0.45) * (L==0?1.0:0.6);
     }
   }
@@ -299,8 +302,8 @@ void main(){
   float h = hs.r, aux = hs.g;
   float diff = max(dot(n,L),0.);
   vec3 H = normalize(L+V);
-  float sp = pow(max(dot(n,H),0.), uShin);
-  float fres = pow(1.0-max(n.z,0.), 2.5);
+  float sp = pow(max(max(dot(n,H),0.),0.0),uShin);
+  float fres = pow(max(1.0-max(n.z,0.),0.0),2.5);
   vec3 R = reflect(-V, n);
   vec3 pig = pal(h*0.85 + aux*0.35);
   float film = h*1.6 + n.z*2.0 + aux*0.8;
@@ -371,27 +374,29 @@ void main(){
   }
   col += sparkles(vUv, uTime) * uSpark * uSparkCol * (1.0-m) * (1.0-smoothstep(0.0,0.8,uDark));
   col = mix(col/(1.0+col*0.35), col/(1.0+col*0.12), uMode);
-  col = pow(max(col,0.), vec3(0.95));
+  col = pow(max(max(col,0.),vec3(0.0)),vec3(0.95));
   col += (hash(gl_FragCoord.xy + fract(uTime*7.1)*137.) - 0.5) * uGrain * 0.12 * (1.0-smoothstep(0.0,0.8,uDark));
-  o = vec4(col,1.);
+  if(any(isnan(col)) || any(isinf(col))) col = vec3(0.0);
+  o = vec4(clamp(col,0.0,1.0),1.);
 }`;
 
 // Pass 3: mirror voxel (square mirror panel, concave mirror funnel, round screen in the middle)
 const FS_V = `#version 300 es
 precision highp float;
+float sq(float x){ return x*x; }
 in vec2 vUv; out vec4 o;
 uniform sampler2D uC; uniform vec2 uRes; uniform float uAmt, uTime, uPop, uPulse;
 uniform sampler2D uCam; uniform float uCamMix, uCamAsp, uMelt, uCryst, uCamFront;
 float hash(vec2 p){ return fract(sin(dot(p,vec2(12.9898,78.233)))*43758.5453); }
-vec3 vid(vec2 q){ float m=min(uRes.x,uRes.y); return texture(uC, 0.5 + q*0.5*vec2(m/uRes.x, m/uRes.y)).rgb; }
+vec3 vid(vec2 q){ float m=min(uRes.x,uRes.y); vec3 c = texture(uC, 0.5 + q*0.5*vec2(m/uRes.x, m/uRes.y)).rgb; return any(isnan(c)) ? vec3(0.0) : c; }
 // the room in front of the voxel, as seen in the mirror (bright ceiling, columns, people, floor)
 vec3 room(vec2 v){
   float x=v.x, y=v.y;
   vec3 ceilc=vec3(0.93,0.93,0.96), mid=vec3(0.58,0.58,0.62), flo=vec3(0.74,0.68,0.63);
   vec3 c = y>0.0 ? mix(mid, ceilc, smoothstep(0.0,0.9,y)) : mix(mid, flo, smoothstep(0.0,-0.9,y));
-  c *= 1.0 - 0.6*pow(0.5+0.5*sin(x*4.3+1.0+0.6*sin(y*2.0)), 16.0);
-  c *= 1.0 - 0.45*pow(0.5+0.5*sin(x*9.7-2.0), 26.0)*smoothstep(0.35,-0.25,y);
-  c += 0.3*pow(0.5+0.5*sin(x*2.1+y*1.3), 30.0);
+  c *= 1.0 - 0.6*pow(max(0.5+0.5*sin(x*4.3+1.0+0.6*sin(y*2.0)),0.0),16.0);
+  c *= 1.0 - 0.45*pow(max(0.5+0.5*sin(x*9.7-2.0),0.0),26.0)*smoothstep(0.35,-0.25,y);
+  c += 0.3*pow(max(0.5+0.5*sin(x*2.1+y*1.3),0.0),30.0);
   vec2 d1=v-vec2(-0.35,0.9), d2=v-vec2(0.55,0.75);
   c += vec3(1.0,0.95,0.85)*(0.7*exp(-dot(d1,d1)*30.0) + 0.5*exp(-dot(d2,d2)*45.0));
   return c;
@@ -405,7 +410,7 @@ vec3 cam(vec2 v){
   if(uCamFront>0.5) sc = vec2(1.0);                                      // use the corners of the frame too
   vec2 uv = 0.5 + d*rr*0.5*sc; if(uCamFront>0.5) uv.x = 1.0-uv.x;
   vec3 c = texture(uCam, clamp(uv,0.002,0.998)).rgb;
-  return (pow(c, vec3(1.08))*1.08 + 0.03)*vec3(0.95,0.97,1.0);
+  return (pow(max(c,vec3(0.0)),vec3(1.08))*1.08 + 0.03)*vec3(0.95,0.97,1.0);
 }
 vec3 env(vec2 v){ return uCamMix>0.001 ? mix(room(v), cam(v), uCamMix) : room(v); }
 void main(){
@@ -445,33 +450,35 @@ void main(){
     float inBowl = 1.0 - smoothstep(rb-0.07, rb+0.03, rhoB);
     const float NS = 16.0;
     float sa = ang/6.28318*NS; float seg = floor(sa), segf = fract(sa);
-    float trb = pow(tb,0.8)*3.0;
+    float trb = pow(max(tb,0.0),0.8)*3.0;
     float orow = floor((len-rb)/0.17);
     vec2 tid = vec2(mod(seg,NS), inBowl>0.5 ? 0.0 : 10.0);
     float h1 = mix(hash(tid),0.5,fu), h2 = mix(hash(tid+7.31),0.5,fu), h3 = mix(hash(tid+3.7),0.5,fu);
     vec2 wob = vec2(sin(uTime*0.9 + u.y*3.0 + h1*6.28), cos(uTime*0.7 + u.x*3.0 + h2*6.28))*(1.0+uPulse*2.5) + dir*uPulse*0.6;   // breathing membrane, throbbing with the heartbeat
     // flat front-facing panel: reflects the room in front of it, hardly any video
     vec2 tng = vec2(-dir.y, dir.x);
-    vec2 bulge = dir*pow(segf-0.5,2.0)*0.7 + tng*(segf-0.5)*0.3;            // each panel is slightly bent -> curved reflections
+    vec2 bulge = dir*sq(segf-0.5)*0.7 + tng*(segf-0.5)*0.3;            // each panel is slightly bent -> curved reflections
     vec3 flatC = env(P*0.85 + wob*0.035 + (vec2(h1,h2)-0.5)*0.22 + bulge);
     flatC += ringGlow*0.06*exp(-(rhoB-rb)*6.0);
     // bowl: inverted, squeezed room; the video only shows on the steep lip around the hole
     vec3 bowlRoom = env(-dir*(0.1+1.35*tb) + wob*0.02 + tng*(segf-0.5)*0.25 + (vec2(h1,h2)-0.5)*0.1);
     float tl = clamp((len-rs)/(rb-rs),0.,1.)/0.45;
-    float s = pow(clamp(tl,0.,1.),0.6)*3.0 + wob.x*0.08 + (h1-0.5)*0.06;
+    float s = pow(max(clamp(tl,0.,1.),0.0),0.6)*3.0 + wob.x*0.08 + (h1-0.5)*0.06;
     float k = floor(s), f = fract(s);
     float fold = mod(k,2.0) < 0.5 ? f : 1.0-f;
     float aa = ang + (h2-0.5)*0.05;
-    vec3 refl = vid(vec2(cos(aa),sin(aa))*(1.0-fold*0.9)) * pow(0.72, s);
+    vec3 refl = vid(vec2(cos(aa),sin(aa))*(1.0-fold*0.9)) * pow(max(0.72,0.0),s);
     float vidAmt = 1.0 - smoothstep(0.45, 1.0, tl);
     vec3 rim = vid(dir*0.96);
     vec3 bowlC = mix(bowlRoom, refl*1.15 + bowlRoom*0.15, vidAmt);
     bowlC += rim*exp(-tl*2.5)*0.5;
     bowlC *= 0.82 + 0.25*sin(tb*3.14159);
-    col = mix(flatC, bowlC, inBowl);
-    col += vec3(0.0)*exp(-pow((rhoB-rb)/0.035,2.0));                    // soft highlight where bowl meets panel
+    if(any(isnan(flatC)) || any(isinf(flatC))) flatC = vec3(0.8);           // Windows/D3D: a bad value in one part must not blacken the other
+    if(any(isnan(bowlC)) || any(isinf(bowlC))) bowlC = flatC;
+    col = inBowl <= 0.0 ? flatC : (inBowl >= 1.0 ? bowlC : mix(flatC, bowlC, inBowl));
+    col += vec3(0.0)*exp(-sq((rhoB-rb)/0.035));                    // soft highlight where bowl meets panel
     col *= 0.9 + 0.18*h3;
-    col += uCamMix*vec3(0.10)*pow(max(0.0, 1.0-abs(segf-0.5)*2.0), 6.0)*(1.0-inBowl);   // glossy sheen down the middle of each panel
+    col += uCamMix*vec3(0.10)*pow(max(max(0.0, 1.0-abs(segf-0.5)*2.0),0.0),6.0)*(1.0-inBowl);   // glossy sheen down the middle of each panel
     // seams: cut gaps between mirror panels - dark gap, bright bevel on one side, shadow on the other
     float side = segf < 0.5 ? 1.0 : -1.0;
     float dRad = min(segf,1.0-segf)*(6.28318/NS)*len;
@@ -483,9 +490,9 @@ void main(){
     float sideO = (len-rb)/0.17 > ob ? 1.0 : -1.0;
     float g = px*1.1;
     float gapR = 1.0-smoothstep(g*0.4, g, dRad);
-    float bevR = exp(-pow((dRad-g*1.8)/(g*0.9),2.0));
+    float bevR = exp(-sq((dRad-g*1.8)/(g*0.9)));
     float gapC = onRing*(1.0-smoothstep(g*0.4, g, dRow)) + onOut*(1.0-smoothstep(g*0.4, g, dOut));
-    float bevC = onRing*exp(-pow((dRow-g*1.8)/(g*0.9),2.0))*sideR + onOut*exp(-pow((dOut-g*1.8)/(g*0.9),2.0))*sideO;
+    float bevC = onRing*exp(-sq((dRow-g*1.8)/(g*0.9)))*sideR + onOut*exp(-sq((dOut-g*1.8)/(g*0.9)))*sideO;
     gapR*=1.0-fu; bevR*=1.0-fu; gapC*=1.0-fu; bevC*=1.0-fu;
     col += vec3(0.75)*bevR*max(side,0.0) + vec3(0.6)*max(bevC,0.0);
     col *= 1.0 - 0.45*bevR*max(-side,0.0) - 0.35*max(-bevC,0.0);
@@ -503,10 +510,10 @@ void main(){
     vec3 n2 = normalize(vec3(nxy, 1.0));
     vec3 Lm = normalize(vec3(-0.45,0.6,1.0)), Hm = normalize(Lm+vec3(0,0,1));
     vec3 rc = env(n2.xy*1.7 + P*0.25);
-    rc = pow(rc, vec3(1.9))*1.45;                                          // high contrast chrome
+    rc = pow(max(rc,vec3(0.0)),vec3(1.9))*1.45;                                          // high contrast chrome
     rc += vid(normalize(nxy+1e-4)*0.7)*0.18*smoothstep(0.2,0.8,length(nxy));   // a little of the colour reflected
-    float spec = pow(max(dot(n2,Hm),0.0), 90.0)*2.2 + pow(max(dot(n2,Hm),0.0), 12.0)*0.25;
-    float fr = pow(1.0-n2.z, 3.0);
+    float spec = pow(max(max(dot(n2,Hm),0.0),0.0),90.0)*2.2 + pow(max(max(dot(n2,Hm),0.0),0.0),12.0)*0.25;
+    float fr = pow(max(1.0-n2.z,0.0),3.0);
     vec3 chrome = rc*(0.75+0.5*fr) + vec3(1.0,0.98,0.95)*spec;
     chrome *= 1.0 - 0.55*smoothstep(-0.03,0.0,sd)*(1.0-step(0.0,sd));      // dark rim where the blob curves away
     col = mix(col, chrome, smoothstep(0.05,0.45,me));
@@ -530,11 +537,13 @@ void main(){
     float facetAmt = 1.0 - smoothstep(0.07, 0.65, front);
     col *= mix(1.0, 0.65+0.7*hash(mc+1.3), facetAmt);
     col += vec3(0.75,0.9,1.0)*(0.6*facetAmt*(1.0-smoothstep(0.0,0.06,md-0.33)));   // frosty grain edges
-    col += vec3(0.85,0.95,1.0)*exp(-pow(front/0.035,2.0))*1.3;                       // bright freezing front
+    col += vec3(0.85,0.95,1.0)*exp(-sq(front/0.035))*1.3;                       // bright freezing front
     vec3 cool = full*mix(1.0,0.8,cr) + vec3(0.04,0.07,0.12)*cr;
     col = mix(cool, col, solid);
   }
-  o = vec4(mix(full, col, smoothstep(0.0,0.35,uAmt)), 1.0);
+  vec3 outc = mix(full, col, smoothstep(0.0,0.35,uAmt));
+  if(any(isnan(outc)) || any(isinf(outc))) outc = vec3(0.75);
+  o = vec4(clamp(outc,0.0,1.0), 1.0);
 }`;
 
 // ---------------------------------------------------------------- palettes
@@ -870,7 +879,7 @@ document.addEventListener("pointerdown",e=>{ if(!denPop.classList.contains("hidd
 function toP(e){ const r=cv.getBoundingClientRect(); const a=r.width/r.height;
   return [((e.clientX-r.left)/r.width-.5)*a, .5-(e.clientY-r.top)/r.height]; }
 let lastP=null;
-cv.addEventListener("pointerdown",e=>{ if(document.body.classList.contains("immersive")) return; const p=toP(e); touch.x=p[0]; touch.y=p[1]; touch.active=true; lastP=p; cv.setPointerCapture(e.pointerId); });
+cv.addEventListener("pointerdown",e=>{ const p=toP(e);                                                   touch.x=p[0]; touch.y=p[1]; touch.active=true; lastP=p; cv.setPointerCapture(e.pointerId); });
 cv.addEventListener("pointermove",e=>{ if(!touch.active) return; const p=toP(e);
   const dx=p[0]-lastP[0], dy=p[1]-lastP[1];
   const cross = (touch.x*dy - touch.y*dx);
